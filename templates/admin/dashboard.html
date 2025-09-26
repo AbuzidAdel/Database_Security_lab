@@ -1,0 +1,590 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Database Security Lab{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Admin Dashboard</h1>
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-success" onclick="showCreateContentModal()">
+                    <i class="bi bi-plus"></i> Create Content
+                </button>
+                <button type="button" class="btn btn-info" onclick="importLegacyContent()">
+                    <i class="bi bi-upload"></i> Import Legacy
+                </button>
+                <button type="button" class="btn btn-warning" onclick="exportContent()">
+                    <i class="bi bi-download"></i> Export
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="exerciseCount">0</h4>
+                        <p class="mb-0">Exercises</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-book fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="stepCount">0</h4>
+                        <p class="mb-0">Steps</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-list-ol fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="hiddenCount">0</h4>
+                        <p class="mb-0">Hidden Items</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-eye-slash fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="totalCount">{{ content_items|length }}</h4>
+                        <p class="mb-0">Total Items</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-collection fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Content Management Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Content Management</h5>
+                    <div class="input-group" style="width: 300px;">
+                        <input type="text" class="form-control" id="searchInput" placeholder="Search content...">
+                        <button class="btn btn-outline-secondary" type="button" onclick="searchContent()">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="contentTable">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Type</th>
+                                <th>Order</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in content_items %}
+                            <tr data-id="{{ item.id }}" class="{% if item.is_hidden %}table-warning{% endif %}">
+                                <td>
+                                    <strong>{{ item.title }}</strong>
+                                    {% if item.parent_id %}
+                                    <br><small class="text-muted">Child of: {{ item.parent_id }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-{% if item.content_type == 'exercise' %}primary{% elif item.content_type == 'step' %}success{% else %}secondary{% endif %}">
+                                        {{ item.content_type.title() }}
+                                    </span>
+                                </td>
+                                <td>{{ item.order or '-' }}</td>
+                                <td>
+                                    {% if item.is_hidden %}
+                                    <span class="badge bg-warning text-dark">Hidden</span>
+                                    {% else %}
+                                    <span class="badge bg-success">Visible</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ item.created_at[:10] if item.created_at else '-' }}</td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button" class="btn btn-outline-primary" onclick="editContent('{{ item.id }}')">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info" onclick="viewContent('{{ item.id }}', '{{ item.content_type }}')">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-warning" onclick="toggleVisibility('{{ item.id }}', {{ 'true' if item.is_hidden else 'false' }})">
+                                            <i class="bi bi-eye{% if item.is_hidden %}-slash{% endif %}"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-danger" onclick="deleteContent('{{ item.id }}')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Content Modal -->
+<div class="modal fade" id="createContentModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Content</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createContentForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="contentTitle" class="form-label">Title</label>
+                                <input type="text" class="form-control" id="contentTitle" required>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="contentType" class="form-label">Type</label>
+                                <select class="form-select" id="contentType" required>
+                                    <option value="">Select type...</option>
+                                    <option value="exercise">Exercise</option>
+                                    <option value="step">Step</option>
+                                    <option value="reference">Reference</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="contentOrder" class="form-label">Order</label>
+                                <input type="number" class="form-control" id="contentOrder" value="0">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3" id="parentSelectContainer" style="display: none;">
+                        <label for="parentSelect" class="form-label">Parent Exercise</label>
+                        <select class="form-select" id="parentSelect">
+                            <option value="">Select parent exercise...</option>
+                            {% for item in content_items %}
+                            {% if item.content_type == 'exercise' %}
+                            <option value="{{ item.id }}">{{ item.title }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="contentEditor" class="form-label">Content</label>
+                        <div id="createContentEditor" style="height: 400px; border: 1px solid #ced4da; border-radius: 0.375rem;"></div>
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="contentHidden">
+                        <label class="form-check-label" for="contentHidden">
+                            Hidden (only visible to admins)
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createContent()">Create Content</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Content Modal -->
+<div class="modal fade" id="editContentModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Content</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editContentForm">
+                    <input type="hidden" id="editContentId">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editContentTitle" class="form-label">Title</label>
+                                <input type="text" class="form-control" id="editContentTitle" required>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="editContentOrder" class="form-label">Order</label>
+                                <input type="number" class="form-control" id="editContentOrder">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3 form-check mt-4">
+                                <input type="checkbox" class="form-check-input" id="editContentHidden">
+                                <label class="form-check-label" for="editContentHidden">
+                                    Hidden
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editContentEditor" class="form-label">Content</label>
+                        <div id="editContentEditor" style="height: 400px; border: 1px solid #ced4da; border-radius: 0.375rem;"></div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="updateContent()">Update Content</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+<script>
+    let createQuill, editQuill;
+    let contentItems = {{ content_items | tojson }};
+
+    // Initialize statistics
+    document.addEventListener('DOMContentLoaded', function() {
+        updateStatistics();
+    });
+
+    function updateStatistics() {
+        const exercises = contentItems.filter(item => item.content_type === 'exercise');
+        const steps = contentItems.filter(item => item.content_type === 'step');
+        const hidden = contentItems.filter(item => item.is_hidden);
+
+        document.getElementById('exerciseCount').textContent = exercises.length;
+        document.getElementById('stepCount').textContent = steps.length;
+        document.getElementById('hiddenCount').textContent = hidden.length;
+    }
+
+    function showCreateContentModal() {
+        // Initialize Quill editor
+        if (!createQuill) {
+            createQuill = new Quill('#createContentEditor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        ['blockquote', 'code-block'],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'script': 'sub'}, { 'script': 'super' }],
+                        [{ 'indent': '-1'}, { 'indent': '+1' }],
+                        ['link', 'image'],
+                        ['clean']
+                    ]
+                }
+            });
+        }
+        
+        new bootstrap.Modal(document.getElementById('createContentModal')).show();
+    }
+
+    // Show/hide parent select based on content type
+    document.getElementById('contentType').addEventListener('change', function() {
+        const parentContainer = document.getElementById('parentSelectContainer');
+        if (this.value === 'step') {
+            parentContainer.style.display = 'block';
+        } else {
+            parentContainer.style.display = 'none';
+        }
+    });
+
+    async function createContent() {
+        const title = document.getElementById('contentTitle').value;
+        const contentType = document.getElementById('contentType').value;
+        const content = createQuill.root.innerHTML;
+        const order = parseInt(document.getElementById('contentOrder').value);
+        const isHidden = document.getElementById('contentHidden').checked;
+        const parentId = document.getElementById('parentSelect').value;
+
+        if (!title || !contentType || !content) {
+            showAlert('Please fill in all required fields', 'warning');
+            return;
+        }
+
+        const payload = {
+            title: title,
+            content: content,
+            content_type: contentType,
+            order: order,
+            is_hidden: isHidden
+        };
+
+        if (parentId) {
+            payload.parent_id = parentId;
+        }
+
+        try {
+            const response = await apiCall('/api/content', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('createContentModal')).hide();
+                showAlert('Content created successfully!', 'success');
+                
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                const error = await response.json();
+                showAlert(error.detail || 'Failed to create content', 'danger');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+        }
+    }
+
+    async function editContent(contentId) {
+        const item = contentItems.find(item => item.id === contentId);
+        if (!item) return;
+
+        // Initialize edit Quill editor
+        if (!editQuill) {
+            editQuill = new Quill('#editContentEditor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        ['blockquote', 'code-block'],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'script': 'sub'}, { 'script': 'super' }],
+                        [{ 'indent': '-1'}, { 'indent': '+1' }],
+                        ['link', 'image'],
+                        ['clean']
+                    ]
+                }
+            });
+        }
+
+        // Populate form
+        document.getElementById('editContentId').value = item.id;
+        document.getElementById('editContentTitle').value = item.title;
+        document.getElementById('editContentOrder').value = item.order || 0;
+        document.getElementById('editContentHidden').checked = item.is_hidden || false;
+        editQuill.root.innerHTML = item.content || '';
+
+        new bootstrap.Modal(document.getElementById('editContentModal')).show();
+    }
+
+    async function updateContent() {
+        const contentId = document.getElementById('editContentId').value;
+        const title = document.getElementById('editContentTitle').value;
+        const content = editQuill.root.innerHTML;
+        const order = parseInt(document.getElementById('editContentOrder').value);
+        const isHidden = document.getElementById('editContentHidden').checked;
+
+        if (!title || !content) {
+            showAlert('Please fill in all required fields', 'warning');
+            return;
+        }
+
+        try {
+            const response = await apiCall(`/api/content/${contentId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    title: title,
+                    content: content,
+                    order: order,
+                    is_hidden: isHidden
+                })
+            });
+
+            if (response.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('editContentModal')).hide();
+                showAlert('Content updated successfully!', 'success');
+                
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                const error = await response.json();
+                showAlert(error.detail || 'Failed to update content', 'danger');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+        }
+    }
+
+    function viewContent(contentId, contentType) {
+        if (contentType === 'exercise') {
+            window.open(`/exercise/${contentId}`, '_blank');
+        } else if (contentType === 'step') {
+            window.open(`/step/${contentId}`, '_blank');
+        }
+    }
+
+    async function toggleVisibility(contentId, isCurrentlyHidden) {
+        try {
+            const response = await apiCall(`/api/content/${contentId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    is_hidden: !isCurrentlyHidden
+                })
+            });
+
+            if (response.ok) {
+                showAlert(`Content ${isCurrentlyHidden ? 'shown' : 'hidden'} successfully!`, 'success');
+                
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                const error = await response.json();
+                showAlert(error.detail || 'Failed to update visibility', 'danger');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+        }
+    }
+
+    async function deleteContent(contentId) {
+        if (!confirm('Are you sure you want to delete this content? This action cannot be undone.')) {
+            return;
+        }
+
+        try {
+            const response = await apiCall(`/api/content/${contentId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                showAlert('Content deleted successfully!', 'success');
+                
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                const error = await response.json();
+                showAlert(error.detail || 'Failed to delete content', 'danger');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+        }
+    }
+
+    function searchContent() {
+        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        const rows = document.querySelectorAll('#contentTable tbody tr');
+        
+        rows.forEach(row => {
+            const title = row.querySelector('td:first-child').textContent.toLowerCase();
+            if (title.includes(searchTerm)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
+    // Search on Enter key
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            searchContent();
+        }
+    });
+
+    async function importLegacyContent() {
+        if (!confirm('This will import all legacy HTML content. Existing content may be overwritten. Continue?')) {
+            return;
+        }
+
+        try {
+            const response = await apiCall('/api/import-legacy', {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                showAlert('Legacy content import started. This may take a few minutes.', 'info');
+                
+                setTimeout(() => {
+                    window.location.reload();
+                }, 10000);
+            } else {
+                const error = await response.json();
+                showAlert(error.detail || 'Failed to start import', 'danger');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+        }
+    }
+
+    async function exportContent() {
+        try {
+            const response = await apiCall('/api/export-content');
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `database-security-lab-export-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showAlert('Content exported successfully!', 'success');
+            } else {
+                const error = await response.json();
+                showAlert(error.detail || 'Failed to export content', 'danger');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+        }
+    }
+</script>
+{% endblock %}
