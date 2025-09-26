@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block title %}{{ step.title }} - Database Security Lab{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Home</a></li>
+        {% if parent %}
+        <li class="breadcrumb-item"><a href="/exercise/{{ parent.id }}">{{ parent.title }}</a></li>
+        {% endif %}
+        <li class="breadcrumb-item active">{{ step.title }}</li>
+    </ol>
+</nav>
+
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h1>{{ step.title }}
+                    {% if step.is_hidden %}
+                    <span class="badge bg-warning text-dark ms-2">Hidden</span>
+                    {% endif %}
+                </h1>
+            </div>
+            <div id="adminControls" style="display: none;">
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="editStep()">
+                        <i class="bi bi-pencil"></i> Edit
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteStep()">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <div class="step-content">
+                    {{ step.content | safe }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            {% if parent %}
+            <a href="/exercise/{{ parent.id }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to {{ parent.title }}
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Step Information</h5>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-4">Order:</dt>
+                    <dd class="col-sm-8">{{ step.order or 'Not set' }}</dd>
+                    
+                    <dt class="col-sm-4">Type:</dt>
+                    <dd class="col-sm-8">{{ step.content_type.title() }}</dd>
+                    
+                    <dt class="col-sm-4">Status:</dt>
+                    <dd class="col-sm-8">
+                        {% if step.is_hidden %}
+                        <span class="badge bg-warning text-dark">Hidden</span>
+                        {% else %}
+                        <span class="badge bg-success">Visible</span>
+                        {% endif %}
+                    </dd>
+                    
+                    {% if step.created_at %}
+                    <dt class="col-sm-4">Created:</dt>
+                    <dd class="col-sm-8">{{ step.created_at[:10] }}</dd>
+                    {% endif %}
+                    
+                    {% if step.updated_at %}
+                    <dt class="col-sm-4">Updated:</dt>
+                    <dd class="col-sm-8">{{ step.updated_at[:10] }}</dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+        
+        <!-- Navigation to other steps -->
+        <div class="card mt-3" id="navigationCard" style="display: none;">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Navigation</h5>
+            </div>
+            <div class="card-body">
+                <div id="stepNavigation">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Step Modal -->
+<div class="modal fade" id="editStepModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Step</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editStepForm">
+                    <div class="mb-3">
+                        <label for="editStepTitle" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="editStepTitle" value="{{ step.title }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editStepContent" class="form-label">Content</label>
+                        <div id="editContentEditor" style="height: 400px; border: 1px solid #ced4da; border-radius: 0.375rem;"></div>
+                        <textarea id="editStepContent" style="display: none;">{{ step.content }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editStepOrder" class="form-label">Order</label>
+                        <input type="number" class="form-control" id="editStepOrder" value="{{ step.order or 0 }}">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="editStepHidden" 
+                               {% if step.is_hidden %}checked{% endif %}>
+                        <label class="form-check-label" for="editStepHidden">
+                            Hidden (only visible to admins)
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="updateStep()">Update Step</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+    .step-content {
+        line-height: 1.8;
+    }
+    
+    .step-content h1, .step-content h2, .step-content h3 {
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+    }
+    
+    .step-content pre {
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        overflow-x: auto;
+    }
+    
+    .step-content blockquote {
+        border-left: 4px solid #007bff;
+        padding-left: 1rem;
+        margin: 1rem 0;
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.375rem;
+    }
+    
+    .step-content img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 0.375rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin: 1rem 0;
+    }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+<script>
+    let editQuill;
+    const stepId = '{{ step.id }}';
+    const parentId = '{{ step.parent_id or "" }}';
+
+    // Show admin controls if user is admin
+    if (currentUser && currentUser.is_admin) {
+        document.getElementById('adminControls').style.display = 'block';
+    }
+
+    // Load navigation if there's a parent exercise
+    if (parentId) {
+        loadStepNavigation();
+    }
+
+    function editStep() {
+        // Initialize Quill editor with existing content
+        if (!editQuill) {
+            editQuill = new Quill('#editContentEditor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        ['blockquote', 'code-block'],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'script': 'sub'}, { 'script': 'super' }],
+                        [{ 'indent': '-1'}, { 'indent': '+1' }],
+                        ['link', 'image'],
+                        ['clean']
+                    ]
+                }
+            });
+            
+            // Set existing content
+            editQuill.root.innerHTML = `{{ step.content | safe }}`;
+        }
+        
+        new bootstrap.Modal(document.getElementById('editStepModal')).show();
+    }
+
+    async function updateStep() {
+        const title = document.getElementById('editStepTitle').value;
+        const content = editQuill.root.innerHTML;
+        const order = parseInt(document.getElementById('editStepOrder').value);
+        const isHidden = document.getElementById('editStepHidden').checked;
+
+        if (!title || !content) {
+            showAlert('Please fill in all required fields', 'warning');
+            return;
+        }
+
+        try {
+            const response = await apiCall(`/api/content/${stepId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    title: title,
+                    content: content,
+                    order: order,
+                    is_hidden: isHidden
+                })
+            });
+
+            if (response.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('editStepModal')).hide();
+                showAlert('Step updated successfully!', 'success');
+                
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                const error = await response.json();
+                showAlert(error.detail || 'Failed to update step', 'danger');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+        }
+    }
+
+    async function deleteStep() {
+        if (!confirm('Are you sure you want to delete this step? This action cannot be undone.')) {
+            return;
+        }
+
+        try {
+            const response = await apiCall(`/api/content/${stepId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                showAlert('Step deleted successfully!', 'success');
+                
+                setTimeout(() => {
+                    if (parentId) {
+                        window.location.href = `/exercise/${parentId}`;
+                    } else {
+                        window.location.href = '/';
+                    }
+                }, 1500);
+            } else {
+                const error = await response.json();
+                showAlert(error.detail || 'Failed to delete step', 'danger');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+        }
+    }
+
+    async function loadStepNavigation() {
+        try {
+            const response = await fetch(`/api/exercise/${parentId}/steps`);
+            if (response.ok) {
+                const steps = await response.json();
+                renderStepNavigation(steps);
+            }
+        } catch (error) {
+            console.error('Failed to load step navigation:', error);
+        }
+    }
+
+    function renderStepNavigation(steps) {
+        const currentStepIndex = steps.findIndex(step => step.id === stepId);
+        const navigationHtml = [];
+
+        if (currentStepIndex > 0) {
+            const prevStep = steps[currentStepIndex - 1];
+            navigationHtml.push(`
+                <a href="/step/${prevStep.id}" class="btn btn-outline-primary btn-sm mb-2 w-100">
+                    <i class="bi bi-arrow-left"></i> Previous: ${prevStep.title}
+                </a>
+            `);
+        }
+
+        if (currentStepIndex < steps.length - 1) {
+            const nextStep = steps[currentStepIndex + 1];
+            navigationHtml.push(`
+                <a href="/step/${nextStep.id}" class="btn btn-outline-primary btn-sm mb-2 w-100">
+                    Next: ${nextStep.title} <i class="bi bi-arrow-right"></i>
+                </a>
+            `);
+        }
+
+        if (navigationHtml.length > 0) {
+            document.getElementById('stepNavigation').innerHTML = navigationHtml.join('');
+            document.getElementById('navigationCard').style.display = 'block';
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Database Security Lab - Serverless Learning Platform
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.9
+    Environment:
+      Variables:
+        SECRET_KEY: !Ref SecretKey
+        USERS_TABLE: !Ref UsersTable
+        CONTENT_TABLE: !Ref ContentTable
+        S3_BUCKET: !Ref AssetsBucket
+
+Parameters:
+  SecretKey:
+    Type: String
+    Description: Secret key for JWT token generation
+    Default: "change-this-in-production-use-a-secure-random-key"
+    NoEcho: true
+
+Resources:
+  # Lambda Function
+  DatabaseSecurityLabFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: app.handler
+      Events:
+        ApiGateway:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            RestApiId: !Ref DatabaseSecurityLabApi
+        ApiGatewayRoot:
+          Type: Api
+          Properties:
+            Path: /
+            Method: ANY
+            RestApiId: !Ref DatabaseSecurityLabApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ContentTable
+        - S3CrudPolicy:
+            BucketName: !Ref AssetsBucket
+
+  # API Gateway
+  DatabaseSecurityLabApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      BinaryMediaTypes:
+        - "image/*"
+        - "application/octet-stream"
+
+  # DynamoDB Tables
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: database-security-lab-users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: username
+          AttributeType: S
+      KeySchema:
+        - AttributeName: username
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  ContentTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: database-security-lab-content
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: content_type
+          AttributeType: S
+        - AttributeName: parent_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: content-type-index
+          KeySchema:
+            - AttributeName: content_type
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: parent-id-index
+          KeySchema:
+            - AttributeName: parent_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # S3 Bucket for static assets
+  AssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "database-security-lab-assets-${AWS::AccountId}-${AWS::Region}"
+      PublicReadPolicy: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - HEAD
+            AllowedOrigins:
+              - "*"
+            ExposedHeaders:
+              - "ETag"
+            MaxAge: 3000
+
+  # S3 Bucket Policy for public read access
+  AssetsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AssetsBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "${AssetsBucket}/*"
+
+  # CloudFront Distribution for better performance
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: ApiGatewayOrigin
+            DomainName: !Sub "${DatabaseSecurityLabApi}.execute-api.${AWS::Region}.amazonaws.com"
+            OriginPath: "/prod"
+            CustomOriginConfig:
+              HTTPPort: 443
+              OriginProtocolPolicy: https-only
+          - Id: S3Origin
+            DomainName: !GetAtt AssetsBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        Enabled: true
+        DefaultRootObject: ""
+        DefaultCacheBehavior:
+          TargetOriginId: ApiGatewayOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - DELETE
+            - GET
+            - HEAD
+            - OPTIONS
+            - PATCH
+            - POST
+            - PUT
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: true
+            Headers:
+              - Authorization
+              - Content-Type
+        CacheBehaviors:
+          - PathPattern: "/assets/*"
+            TargetOriginId: S3Origin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods:
+              - GET
+              - HEAD
+            CachedMethods:
+              - GET
+              - HEAD
+            ForwardedValues:
+              QueryString: false
+              Headers: []
+            TTL:
+              DefaultTTL: 86400
+              MaxTTL: 31536000
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+Outputs:
+  DatabaseSecurityLabApi:
+    Description: "API Gateway endpoint URL for Database Security Lab"
+    Value: !Sub "https://${DatabaseSecurityLabApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"
+
+  CloudFrontDistributionUrl:
+    Description: "CloudFront Distribution URL"
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+    Export:
+      Name: !Sub "${AWS::StackName}-CloudFrontUrl"
+
+  UsersTableName:
+    Description: "DynamoDB Users Table Name"
+    Value: !Ref UsersTable
+    Export:
+      Name: !Sub "${AWS::StackName}-UsersTable"
+
+  ContentTableName:
+    Description: "DynamoDB Content Table Name"
+    Value: !Ref ContentTable
+    Export:
+      Name: !Sub "${AWS::StackName}-ContentTable"
+
+  AssetsBucketName:
+    Description: "S3 Assets Bucket Name"
+    Value: !Ref AssetsBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-AssetsBucket"
